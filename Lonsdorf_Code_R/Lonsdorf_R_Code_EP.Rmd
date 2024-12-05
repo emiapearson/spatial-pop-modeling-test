@@ -39,18 +39,14 @@ raster_path <- paste0(base, tstep + 2012, ".TIF") #create raster path based on t
 curr_LC <- terra::rast(raster_path) #assign current time step raster
 crop_extent <- c(566938.2, 626938.2, 4236149, 4296149)
 curr_LC <- terra::crop(curr_LC, crop_extent)
-r <- nrow(curr_LC) #number of rows in raster file
-c <- ncol(curr_LC) #number of columns in raster file
-
-queen_array <- array(0, dim = c(r, c, spec_num, 11)) #empty array to be filled with queens
-max_queen_array <- array(0, dim = c(r, c, spec_num, 11)) #empty array to be filled with max queens
-queen_array_fin <- array(0, dim = c(r, c, spec_num)) #final queen numbers
-pol_ls_score <- array(0, dim = c(r, c, spec_num)) #pollinator landscape score
-dispersers <- array(0, dim = c(r, c, spec_num, 11))
+nr <- nrow(curr_LC) #number of rows in raster file
+nc <- ncol(curr_LC) #number of columns in raster file
+# array for queens, max queens, final queen numbers, pollinator score, dispersers
+queen_array <- max_queen_array <- queen_array_fin <- pol_ls_score <- dispersers <- array(0, dim = c(nr, nc, spec_num, 11))
 ```
 
 ```{r Initialize queens}
-queen_seed <- array(0, dim = c(r, c, spec_num))
+queen_seed <- array(0, dim = c(nr, nc, spec_num))
 #generate random number (0-1) in 10x10 array in the center of raster file
 queen_seed[1016:1025, 1021:1030, ] <- array(runif(n = (10 * 10 * spec_num)), dim = c(10, 10, spec_num))
 
@@ -106,9 +102,9 @@ for (t in 1:21) {
     filter <- dist_mat_decay/eff_forage #normalized distant matrix
     
     #Initialize floral and nesting habitat
-    HF <- matrix(curr_LC, nrow = r, ncol = c) #matrix of raster values
-    HN <- matrix(curr_LC, nrow = r, ncol = c)
-    LS <- matrix(0, nrow = r, ncol = c)
+    HF <- matrix(curr_LC, nrow = nr, ncol = nc) #matrix of raster values
+    HN <- matrix(curr_LC, nrow = nr, ncol = nc)
+    LS <- matrix(0, nrow = nr, ncol = nc)
     
     #Reclass landcover for each cover type by species 
     for (i in 1:tot_LC) {
@@ -119,14 +115,14 @@ for (t in 1:21) {
     #Disperse queens
     if (t > 1) {
       #Calculate maximum number of queens per cell given landscape conditions
-      max_queen_array[,,s,t] <- matrix(1, nrow = r, ncol = c) * max_nest * HN 
+      max_queen_array[,,s,t] <- matrix(1, nrow = nr, ncol = nc) * max_nest * HN 
       #Takes the smallest value between the two arrays. The number of queens in a cell cannot exceed the maximum.
       queen_array[,,s,t] <- pmin(dispersers[,,s,t-1], max_queen_array) 
       forage <- convolve(HF, filter, type = "open") #Convolution
       pol_ls_score[,,s] <- HN * forage 
         #WHAT IS HAPPENING HERE ^^
       
-      rep_temp <- matrix(rnorm(r*c), nrow = r, ncol = c)
+      rep_temp <- matrix(rnorm(nr*nc), nrow = nr, ncol = nc)
       range <- max(rep_temp) - min(rep_temp)
       standardized <- floor(max_rep * 2 * (rep_temp - min(rep_temp))/range)
       rep <- queen_array[,,s,t] * (standardized * forage)
