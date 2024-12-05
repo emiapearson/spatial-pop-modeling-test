@@ -1,45 +1,44 @@
 ---
 title: "Bee Landscape Population Modeling Attempt"
-output: html_notebook
+output:
+  html_document:
+    df_print: paged
 ---
 ```{r Set wd and read in libraries}
 #Set working directory
-knitr::opts_knit$set(root.dir = "~/Documents/GitHub/spatial-pop-modeling-test/Lonsdorf_Code_R/")
+# knitr::opts_knit$set(root.dir = "~/Documents/GitHub/spatial-pop-modeling-test/Lonsdorf_Code_R/")
 
 #Load libraries
-library(tidyverse)
-library(raster)
-library(terra)
-library(signal)
+#library(tidyverse)
+#library(raster)
+#library(terra)
+#library(signal)
 ```
+
 
 ```{r Read in data layers}
 #CDL floral resources, nesting, and foraging 
-reclass_floral <- read.csv("CA_bees_floral.csv") %>%
-  na.omit()
-reclass_nest <- read.csv("CA_bees_nesting.csv") %>%
-  na.omit()
-reclass_lifehist <- read.csv("CA_bees_forage.csv") %>%
-  na.omit()
+reclass_floral <- read.csv("CA_bees_floral.csv") |> na.omit()
+reclass_nest <- read.csv("CA_bees_nesting.csv") |> na.omit()
+reclass_lifehist <- read.csv("CA_bees_forage.csv") |> na.omit()
 
 ```
 
 ```{r Create parameters}
 cell_size <- 30 #30x30 m cell size
 spec_num <- nrow(reclass_lifehist) #7 species in guild table
-t <- 1 #time step
+tstep <- 1 #time step
 
 #Create raster file path
 #Rasters taken from https://croplandcros.scinet.usda.gov/
-a <- "~/Documents/GitHub/spatial-pop-modeling-test/Lonsdorf_Code_R/Tiff Files/cdl_Yolo_"
-b <- ".TIF"
-raster_path <- paste0(a, (t+2012), b) #create raster path based on time step
+base <- "Tiff Files/cdl_Yolo_"
+raster_path <- paste0(base, tstep + 2012, ".TIF") #create raster path based on time step
 ```
 
 ```{r Create empty arrays}
-curr_LC <- rast(raster_path) #assign current time step raster
+curr_LC <- terra::rast(raster_path) #assign current time step raster
 crop_extent <- c(566938.2, 626938.2, 4236149, 4296149)
-curr_LC <-  crop(curr_LC, crop_extent)
+curr_LC <- terra::crop(curr_LC, crop_extent)
 r <- nrow(curr_LC) #number of rows in raster file
 c <- ncol(curr_LC) #number of columns in raster file
 
@@ -52,7 +51,8 @@ dispersers <- array(0, dim = c(r, c, spec_num, 11))
 
 ```{r Initialize queens}
 queen_seed <- array(0, dim = c(r, c, spec_num))
-queen_seed[1016:1025, 1021:1030, ] <- array(runif(n = (10 * 10 * spec_num)), dim = c(10, 10, spec_num)) #generate random number (0-1) in 10x10 array in the center of raster file
+#generate random number (0-1) in 10x10 array in the center of raster file
+queen_seed[1016:1025, 1021:1030, ] <- array(runif(n = (10 * 10 * spec_num)), dim = c(10, 10, spec_num))
 
 #Assign a queen to a cell in array if > 0.8 (20% of cells will receive a queen)
 queen_array[ , , , 1] <- ifelse(queen_seed > 0.8, 1, 0)
@@ -61,42 +61,44 @@ queen_array[ , , , 1] <- ifelse(queen_seed > 0.8, 1, 0)
 
 ```{r For loop}
 #Calc weighted average of foraging quality using foraging activity prop 
-
-for (t in 1:21){
+for (t in 1:21) {
   #Pull new raster file after 10 years of initializing
-  if t > 11{
-    raster_path <- paste0(a, (t+2012-10), b) #assign new raster file based on time step
-    curr_LC <- raster(raster_path) #current land cover raster
-    curr_LC <-  crop(curr_LC, crop_extent) #crop land cover to same extent
+  if (t > 11) {
+    raster_path <- paste0(base, (t+2012-10), ".TIF") #assign new raster file based on time step
+    curr_LC <- terra::rast(raster_path) #current land cover raster
+    curr_LC <- terra::crop(curr_LC, crop_extent) #crop land cover to same extent
   }
   
   #Land cover types for raster file
-  type <- as_vector(unname(unique(curr_LC))) #create a vector of  unique land cover values
-  LC_type <- tibble(type = type, #land cover types in raster file
-                    num_pix = 0) #create empty column for number of pixels of each type
-  num_LC <- nrow(LC_type) #number of land cover types in raster file
+#  type <- terra::unique(curr_LC)[,1] #create a vector of  unique land cover values
+#  LC_type <- data.frame(type = type, #land cover types in raster file
+#                    num_pix = 0) #create empty column for number of pixels of each type
+#  num_LC <- nrow(LC_type) #number of land cover types in raster file
   tot_LC <- nrow(reclass_nest) #number of land cover values in biophys table
   
   #How many pixels of each cover type
-  for (i in 1:num_LC) {
-    type_i <- LC_type$type[i]
-    LC_type$num_pix[i] <- sum(values(curr_LC) == type_i, na.rm = T)
-  }
+#  for (i in 1:num_LC) {
+#    type_i <- LC_type$type[i]
+#    LC_type$num_pix[i] <- sum(values(curr_LC) == type_i, na.rm = T)
+#  }
   
+  #How many pixels of each cover type
+  LC_type <- terra::freq(curr_LC)[, -1]
+  names(LC_type) <- c("type", "num_pix")
+
   #Per capita reproduction rate
   for (s in 1:spec_num) {
     #Maximum number of nests per cell and max queens produced per nest
-    max_nest <- reclass_lifehist$Nests[i] #maximum number of nests within a cell
-    max_rep <- reclass_lifehist$Rep[i] #maximum number of queens produced per nest
+    max_nest <- reclass_lifehist$Nests[s] #maximum number of nests within a cell
+    max_rep <- reclass_lifehist$Rep[s] #maximum number of queens produced per nest
     
     #Foraging distance matrix
-    forage_dist <- reclass_lifehist$Disp[i] #foraging distance for each species
+    forage_dist <- reclass_lifehist$Disp[s] #foraging distance for each species
     radius <- 2*round(forage_dist/cell_size) #foraging radius in cells
       #WHY IS IT 2*THE ROUNDED VALUE
     X <- seq(-radius, radius) #all integers between -radius and radius
     Y <- seq(-radius, radius) #all integers between -radius and radius
-    XY_grid <- expand.grid(X, Y) %>% #all combinations of X and Y
-      rename(X = Var1, Y = Var2)
+    XY_grid <- expand.grid(X=X, Y=Y) 
     
     dist_mat <- cell_size * sqrt(XY_grid$X^2 + XY_grid$Y^2) #distance to center of circle 
     dist_mat_decay <- exp(-dist_mat/forage_dist) * (dist_mat <= 2 * forage_dist) #exp decay to transform square into circle
@@ -115,9 +117,11 @@ for (t in 1:21){
     }
     
     #Disperse queens
-    if t > 1{
-      max_queen_array[,,s,t] <- matrix(1, nrow = r, ncol = c) * max_nest * HN #Calculate maximum number of queens per cell given landscape conditions
-      queen_array[,,s,t] <- pmin(dispersers[,,s,t-1], max_queen_array) #Takes the smallest value between the two arrays. The number of queens in a cell cannot exceed the maximum.
+    if (t > 1) {
+      #Calculate maximum number of queens per cell given landscape conditions
+      max_queen_array[,,s,t] <- matrix(1, nrow = r, ncol = c) * max_nest * HN 
+      #Takes the smallest value between the two arrays. The number of queens in a cell cannot exceed the maximum.
+      queen_array[,,s,t] <- pmin(dispersers[,,s,t-1], max_queen_array) 
       forage <- convolve(HF, filter, type = "open") #Convolution
       pol_ls_score[,,s] <- HN * forage 
         #WHAT IS HAPPENING HERE ^^
@@ -126,7 +130,7 @@ for (t in 1:21){
       range <- max(rep_temp) - min(rep_temp)
       standardized <- floor(max_rep * 2 * (rep_temp - min(rep_temp))/range)
       rep <- queen_array[,,s,t] * (standardized * forage)
-      dispersers[,,s,t] <- 
+      # dispersers[,,s,t] <- 
     }
   }
 }
