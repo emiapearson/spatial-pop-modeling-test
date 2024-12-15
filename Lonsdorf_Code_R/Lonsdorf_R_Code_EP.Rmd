@@ -18,6 +18,7 @@ library(signal)
 #CDL floral resources, nesting, and foraging 
 reclass_floral <- read.csv("CA_bees_floral.csv") %>%
   na.omit()
+reclass_floral[2:ncol(reclass_floral)] <- reclass_floral[2:ncol(reclass_floral)]/100
 reclass_nest <- read.csv("CA_bees_nesting.csv") %>%
   na.omit()
 reclass_lifehist <- read.csv("CA_bees_forage.csv") %>%
@@ -66,7 +67,7 @@ for (t in 1:20){
   if (t > 10) {
     raster_path <- paste0(base, (t+2012-10), ".TIF") #assign new raster file based on time step
     curr_LC <- terra::rast(raster_path) #current land cover raster
-    curr_LC <- terra::trim(curr_LC) #remove excess NA rows
+    #curr_LC <- terra::trim(curr_LC) #remove excess NA rows
     curr_LC <-  terra::crop(curr_LC, extent) #crop land cover to same extent
   }
   
@@ -92,8 +93,7 @@ for (t in 1:20){
     filter <- dist_mat_decay/eff_forage #normalized distant matrix (sums to 1)
     
     #Initialize floral and nesting habitat
-    HF <- terra::as.matrix(curr_LC, wide = T)
-    HN <- terra::as.matrix(curr_LC, wide = T)
+    HF <- HN <- terra::as.matrix(curr_LC, wide = T)
     
     #Reclass landcover for each cover type by species 
     tot_LC <- nrow(reclass_nest) #number of land cover values in biophys table 
